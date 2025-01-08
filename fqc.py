@@ -1,0 +1,130 @@
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
+from custom_gates import czz, cxxzz
+
+def encode_with_five_qubit_code(qc, log_q, stab_reg):
+    qc.h(stab_reg[0])
+    qc.s(stab_reg[0])
+    qc.cy(stab_reg[0], log_q)
+    
+    qc.h(stab_reg[1])
+    qc.cx(stab_reg[1], log_q)
+    
+    qc.h(stab_reg[2])
+    czz(qc, stab_reg[2], stab_reg[0], stab_reg[1])
+    qc.cx(stab_reg[2], log_q)
+        
+    qc.h(stab_reg[3])
+    qc.s(stab_reg[3])
+    czz(qc, stab_reg[3], stab_reg[0], stab_reg[2])
+    qc.cy(stab_reg[3], log_q)
+
+    qc.barrier()
+
+def five_qubit_code_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
+    qc.h(anc_reg)
+    
+    cxxzz(qc, anc_reg[0], stab_reg[0], stab_reg[3], stab_reg[1], stab_reg[2])
+    cxxzz(qc, anc_reg[1], stab_reg[1], log_q, stab_reg[2], stab_reg[3])
+    cxxzz(qc, anc_reg[2], stab_reg[0], stab_reg[2], stab_reg[3], log_q)
+    cxxzz(qc, anc_reg[3], stab_reg[1], stab_reg[3], stab_reg[0], log_q)
+
+    qc.h(anc_reg)
+    qc.measure(anc_reg, class_reg)
+
+    qc.barrier()
+
+def five_qubit_code_correct_errors(qc, log_q, stab_reg, class_reg):
+    # Define correction gates using a mapping of the table values.
+    def apply_correction(circuit, correction, qubit):
+        if correction == "X":
+            circuit.x(qubit)
+        elif correction == "Z":
+            circuit.z(qubit)
+        elif correction == "Y":
+            circuit.y(qubit)
+        elif correction == "I":
+            circuit.i(qubit) #does nothing, just to be there
+
+    corrections = {
+        1: ["X", stab_reg[0]], 10: ["Z", stab_reg[0]], 11: ["Y", stab_reg[0]],
+        8: ["X", stab_reg[1]], 5: ["Z", stab_reg[1]], 13: ["Y", stab_reg[1]],
+        12: ["X", stab_reg[2]], 2: ["Z", stab_reg[2]], 14: ["Y", stab_reg[2]],
+        6: ["X", stab_reg[3]], 9: ["Z", stab_reg[3]], 15: ["Y", stab_reg[3]],
+        3: ["X", log_q],      4: ["Z", log_q],       7: ["Y", log_q]
+    }
+
+
+    # Iterate through all correction cases from the table.
+    for decimal_value, correction_qubit in corrections.items():
+        # Prepare the classical condition for the current value.
+        condition = [int(x) for x in format(decimal_value, '04b')]
+        control_ops = [
+            qc.if_test((class_reg[i], value))
+            for i, value in enumerate(condition)
+        ]
+        with control_ops[0]:
+            with control_ops[1]:
+                    with control_ops[2]:
+                        with control_ops[3]:
+                            apply_correction(qc, correction_qubit[0], correction_qubit[1])
+    qc.barrier()
+    
+def decode_with_five_qubit_code(qc, log_q, stab_reg, out_q):
+    qc.cx(stab_reg, out_q)
+    qc.cx(log_q, out_q)
+    czz(qc, out_q, stab_reg[0], stab_reg[3])
+    qc.cx(out_q, log_q)
+
+    qc.barrier()
+
+
+def create_fqc_bell_state() -> QuantumCircuit:
+    q1 = QuantumRegister(1, 'log_qubit_1')
+    s1 = QuantumRegister(4, 'stabilizer_1')
+    o1 = QuantumRegister(1, 'output_1')
+    a1 = QuantumRegister(4, 'anicilla_1')
+    c1 = ClassicalRegister(4, 'measured_errors_1')
+    q2 = QuantumRegister(1, 'log_qubit_2')
+    s2 = QuantumRegister(4, 'stabilizer_2')
+    o2 = QuantumRegister(1, 'output_2')
+    a2 = QuantumRegister(4, 'anicilla_2')
+    c2 = ClassicalRegister(4, 'measured_errors_2')
+    r = ClassicalRegister(2, 'measured_output')
+    qc = QuantumCircuit(a1, s1, q1, o1, a2, s2, q2, o2, c1, c2, r)
+    
+    qc.initialize(0, s1)
+    qc.initialize(0, o1)
+    qc.initialize(0, s2)
+    qc.initialize(0, o2)
+    
+    qc.barrier()
+    
+    #Set up Bell State
+    qc.h(q1[0])
+    qc.cx(q1[0], q2[0])
+    
+    qc.barrier()
+    
+    #Encode Qubits
+    encode_with_five_qubit_code(qc, q1[0], s1)
+    encode_with_five_qubit_code(qc, q2[0], s2)
+    
+    #Measure Syndrome
+    five_qubit_code_measure_syndrome(qc, q1[0], s1, a1, c1)
+    five_qubit_code_measure_syndrome(qc, q2[0], s2, a2, c2)
+    
+    #Correct Errors
+    five_qubit_code_correct_errors(qc, q1[0], s1, c1)
+    five_qubit_code_correct_errors(qc, q2[0], s2, c2)
+    
+    #Decode Qubits
+    decode_with_five_qubit_code(qc, q1[0], s1, o1[0])
+    decode_with_five_qubit_code(qc, q2[0], s2, o2[0])
+    
+    qc.barrier()
+    
+    #Measure
+    qc.measure(o1[0], r[0])
+    qc.measure(o2[0], r[1])
+    
+    return qc
