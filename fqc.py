@@ -35,38 +35,29 @@ def five_qubit_code_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
 
 def five_qubit_code_correct_errors(qc, log_q, stab_reg, class_reg):
     # Define correction gates using a mapping of the table values.
-    def apply_correction(circuit, correction, qubit):
+    def apply_correction(qc, correction, qubit):
         if correction == "X":
-            circuit.x(qubit)
+            qc.x(qubit)
         elif correction == "Z":
-            circuit.z(qubit)
+            qc.z(qubit)
         elif correction == "Y":
-            circuit.y(qubit)
-        elif correction == "I":
-            circuit.i(qubit) #does nothing, just to be there
+            qc.y(qubit)
+
 
     corrections = {
-        1: ["X", stab_reg[0]], 10: ["Z", stab_reg[0]], 11: ["Y", stab_reg[0]],
-        8: ["X", stab_reg[1]], 5: ["Z", stab_reg[1]], 13: ["Y", stab_reg[1]],
-        12: ["X", stab_reg[2]], 2: ["Z", stab_reg[2]], 14: ["Y", stab_reg[2]],
-        6: ["X", stab_reg[3]], 9: ["Z", stab_reg[3]], 15: ["Y", stab_reg[3]],
-        3: ["X", log_q],      4: ["Z", log_q],       7: ["Y", log_q]
+        1:  ("X", stab_reg[0]), 10: ("Z", stab_reg[0]), 11: ("Y", stab_reg[0]),
+        8:  ("X", stab_reg[1]),  5: ("Z", stab_reg[1]), 13: ("Y", stab_reg[1]),
+        12: ("X", stab_reg[2]),  2: ("Z", stab_reg[2]), 14: ("Y", stab_reg[2]),
+        6:  ("X", stab_reg[3]),  9: ("Z", stab_reg[3]), 15: ("Y", stab_reg[3]),
+        3:  ("X", log_q),        4: ("Z", log_q),        7: ("Y", log_q)
     }
 
 
-    # Iterate through all correction cases from the table.
-    for decimal_value, correction_qubit in corrections.items():
-        # Prepare the classical condition for the current value.
-        condition = [int(x) for x in format(decimal_value, '04b')]
-        control_ops = [
-            qc.if_test((class_reg[i], value))
-            for i, value in enumerate(condition)
-        ]
-        with control_ops[0]:
-            with control_ops[1]:
-                    with control_ops[2]:
-                        with control_ops[3]:
-                            apply_correction(qc, correction_qubit[0], correction_qubit[1])
+    for value, (gate, qubit) in corrections.items():
+        with qc.if_test((class_reg, value)):
+            apply_correction(qc, gate, qubit)
+
+
     qc.barrier()
     
 def decode_with_five_qubit_code(qc, log_q, stab_reg, out_q):

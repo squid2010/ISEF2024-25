@@ -32,104 +32,37 @@ def steane_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
 
 
 def steane_correct_errors(qc, log_q, stab_reg, class_reg):
+    """
+    Implements error correction based on stabilizer states using `if_else`.
+    
+    Parameters:
+        qc (QuantumCircuit): The quantum circuit.
+        log_reg (QuantumRegister): Logical qubit register (1 qubit).
+        stab_reg (QuantumRegister): Stabilizer register (6 qubits).
+        class_reg (ClassicalRegister): Classical register (6 bits).
+    """
     # Define correction gates using a mapping of the table values.
-    def apply_correction(circuit, correction, qubit):
+    def apply_correction(qc, correction, qubit):
         if correction == "X":
-            circuit.x(qubit)
+            qc.x(qubit)
         elif correction == "Z":
-            circuit.z(qubit)
+            qc.z(qubit)
         elif correction == "Y":
-            circuit.y(qubit)
-        elif correction == "I":
-            circuit.i(qubit) #does nothing, just to be there
+            qc.y(qubit)
 
-    corrections = { # All of them are the Y errors, as the first half of the number would be the Z error, and the second, the X
-    36: stab_reg[0],
-    18: stab_reg[1],
-    9:  stab_reg[2],
-    54: stab_reg[3],
-    45: stab_reg[4],
-    63: stab_reg[5],
-    27: log_q
+    corrections = {
+        4: ("X", stab_reg[0]), 32: ("Z", stab_reg[0]), 36: ("Y", stab_reg[0]),
+        2: ("X", stab_reg[1]), 16: ("Z", stab_reg[1]), 18: ("Y", stab_reg[1]),
+        1: ("X", stab_reg[2]),  8: ("Z", stab_reg[2]),  9: ("Y", stab_reg[2]),
+        6: ("X", stab_reg[3]), 48: ("Z", stab_reg[3]), 54: ("Y", stab_reg[3]),
+        5: ("X", stab_reg[4]), 40: ("Z", stab_reg[4]), 45: ("Y", stab_reg[4]),
+        7: ("X", stab_reg[5]), 56: ("Z", stab_reg[5]), 63: ("Y", stab_reg[5]),
+        3: ("X", log_q),       24: ("Z", log_q),       27: ("Y", log_q)
     }
 
-    # Iterate through all correction cases from the table.
-    for decimal_value, qubit in corrections.items():
-        # Prepare the classical condition for the current value.
-        one_vals = []
-        condition = [int(x) for x in format(decimal_value, '06b')]
-        control_ops = []
-        for i, value in enumerate(condition):
-            if value==1:
-                one_vals.append(i-len(one_vals))
-            control_ops.append(qc.if_test((class_reg[i], value)))
-
-        for i in range(len(one_vals)):
-            if_test = control_ops.pop(one_vals[i])
-            control_ops.append(if_test)
-
-        
-        one_vals = [] #clear the one_vals, as they are no longer correct
-        
-        for i in range(len(control_ops)): 
-            if control_ops[i].condition[1]==1:
-                one_vals.append(i)
-
-        # Split the one_vals into Z and X checks for the Y condition.
-        z_checks = one_vals[:len(one_vals) // 2]  # First half corresponds to Z checks.
-        x_checks = one_vals[len(one_vals) // 2 : len(one_vals)]  # Second half corresponds to X checks.
-        
-        
-        # Apply the correction for the matched condition.
-        if z_checks[0] != 0:
-            with control_ops[0]:
-                with control_ops[1]:
-                    if z_checks[0] != 2:
-                        with control_ops[2]:
-                            with control_ops[3]:
-                                if z_checks[0] != 4: #if we reach this point, z_checks should always be 4, this is just for safety
-                                    with control_ops[4]:
-                                        with control_ops[5]:
-                                            apply_correction(qc, "I", qubit)
-
-                                else: #2 bits need to be one
-                                    with control_ops[z_checks[0]] as else1:
-                                        with control_ops[x_checks[0]] as else2:
-                                            apply_correction(qc, "Y", qubit)
-                                        with else2:
-                                            apply_correction(qc, "Z", qubit)
-                                    with else1:
-                                        with control_ops[x_checks[0]]:
-                                            apply_correction(qc, "X", qubit)
-                                        
-                    else: #4 bits need to be one
-                        with control_ops[z_checks[0]] as else1:
-                            with control_ops[z_checks[1]]:
-                                with control_ops[x_checks[0]] as else2:
-                                    with control_ops[x_checks[1]]:
-                                        apply_correction(qc, "Y", qubit)
-                                with else2:
-                                    apply_correction(qc, "Z", qubit)    
-                        with else1:
-                            with control_ops[x_checks[0]]:
-                                 with control_ops[x_checks[1]]:
-                                    apply_correction(qc, "X", qubit)
-                                     
-        else: #All 6 bits need to be one
-            with control_ops[z_checks[0]] as else1:
-                with control_ops[z_checks[1]]:
-                    with control_ops[z_checks[2]]:
-                        with control_ops[x_checks[0]] as else2:
-                            with control_ops[x_checks[1]]:
-                                with control_ops[x_checks[2]]:
-                                    apply_correction(qc, "Y", qubit)
-                        with else2:
-                            apply_correction(qc, "Z", qubit)
-            with else1:
-                with control_ops[x_checks[0]]:
-                    with control_ops[x_checks[1]]:
-                        with control_ops[x_checks[2]]:
-                            apply_correction(qc, "X", qubit)
+    for value, (gate, qubit) in corrections.items():
+        with qc.if_test((class_reg, value)):
+            apply_correction(qc, gate, qubit)
 
 
     qc.barrier()
