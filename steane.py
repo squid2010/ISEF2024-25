@@ -91,7 +91,7 @@ def create_steane_bell_state() -> QuantumCircuit:
     a2 = QuantumRegister(6, 'ancilla_2')
     c2 = ClassicalRegister(6, 'measured_errors_2')
     r = ClassicalRegister(2, 'measured_output')
-    qc = QuantumCircuit(a1, s1, q1, a2, s2, q2, o1, o2, c1, c2, r)
+    qc = QuantumCircuit(a1, s1, q1, a2, s2, q2, o1, o2, c1, c2, r, name="Bell State Encoded with Steane's Code")
     
     #qc.reset(range(qc.num_qubits))
     

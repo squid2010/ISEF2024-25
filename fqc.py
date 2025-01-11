@@ -81,7 +81,7 @@ def create_fqc_bell_state() -> QuantumCircuit:
     a2 = QuantumRegister(4, 'anicilla_2')
     c2 = ClassicalRegister(4, 'measured_errors_2')
     r = ClassicalRegister(2, 'measured_output')
-    qc = QuantumCircuit(a1, s1, q1, o1, a2, s2, q2, o2, c1, c2, r)
+    qc = QuantumCircuit(a1, s1, q1, o1, a2, s2, q2, o2, c1, c2, r, name="Bell State Encoded with the Five Qubit Code")
     
     qc.initialize(0, s1)
     qc.initialize(0, o1)
