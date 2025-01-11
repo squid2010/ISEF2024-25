@@ -15,7 +15,7 @@ def encode_with_steane(qc, log_q, stab_reg):
     qc.barrier()
 
 def steane_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
-    qc.h(anc_reg[:6])
+    qc.h(anc_reg)
 
     cxxxx(qc, anc_reg[0], stab_reg[0], stab_reg[4], stab_reg[5], log_q)
     cxxxx(qc, anc_reg[1], stab_reg[1], stab_reg[3], stab_reg[5], log_q)
@@ -131,4 +131,31 @@ def create_steane_bell_state() -> QuantumCircuit:
     qc.measure(o1[0], r[0])
     qc.measure(o2[0], r[1])
     
+    return qc
+
+def create_steane_one_qubit() -> QuantumCircuit:
+    q1 = QuantumRegister(1, 'log_qubit')
+    s1 = QuantumRegister(6, 'stabilizers')
+    o1 = QuantumRegister(1, 'output')
+    a1 = QuantumRegister(6, 'ancilla')
+    c1 = ClassicalRegister(6, 'measured_errors')
+    r = ClassicalRegister(2, 'measured_output')
+    qc = QuantumCircuit(a1, s1, q1, o1, c1, r, name="Single Qubit Encoded with Steane's Code")
+
+    qc.initialize(0, s1)
+    qc.initialize(0, o1)
+    qc.initialize(0, a1)
+
+    qc.barrier()
+
+    encode_with_steane(qc, q1[0], s1)
+
+    steane_measure_syndrome(qc, q1[0], s1, a1, c1)
+
+    steane_correct_errors(qc, q1[0], s1, c1)
+
+    decode_with_steane(qc, q1[0], s1, o1[0])
+    
+    qc.measure(q1[0], r[0])
+
     return qc

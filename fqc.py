@@ -1,7 +1,7 @@
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from custom_gates import czz, cxxzz
 
-def encode_with_five_qubit_code(qc, log_q, stab_reg):
+def encode_with_fqc(qc, log_q, stab_reg):
     qc.h(stab_reg[0])
     qc.s(stab_reg[0])
     qc.cy(stab_reg[0], log_q)
@@ -20,7 +20,7 @@ def encode_with_five_qubit_code(qc, log_q, stab_reg):
 
     qc.barrier()
 
-def five_qubit_code_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
+def fqc_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
     qc.h(anc_reg)
     
     cxxzz(qc, anc_reg[0], stab_reg[0], stab_reg[3], stab_reg[1], stab_reg[2])
@@ -33,7 +33,7 @@ def five_qubit_code_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
 
     qc.barrier()
 
-def five_qubit_code_correct_errors(qc, log_q, stab_reg, class_reg):
+def fqc_correct_errors(qc, log_q, stab_reg, class_reg):
     # Define correction gates using a mapping of the table values.
     def apply_correction(qc, correction, qubit):
         if correction == "X":
@@ -60,7 +60,7 @@ def five_qubit_code_correct_errors(qc, log_q, stab_reg, class_reg):
 
     qc.barrier()
     
-def decode_with_five_qubit_code(qc, log_q, stab_reg, out_q):
+def decode_with_fqc(qc, log_q, stab_reg, out_q):
     qc.cx(stab_reg, out_q)
     qc.cx(log_q, out_q)
     czz(qc, out_q, stab_reg[0], stab_reg[3])
@@ -97,20 +97,20 @@ def create_fqc_bell_state() -> QuantumCircuit:
     qc.barrier()
     
     #Encode Qubits
-    encode_with_five_qubit_code(qc, q1[0], s1)
-    encode_with_five_qubit_code(qc, q2[0], s2)
+    encode_with_fqc(qc, q1[0], s1)
+    encode_with_fqc(qc, q2[0], s2)
     
     #Measure Syndrome
-    five_qubit_code_measure_syndrome(qc, q1[0], s1, a1, c1)
-    five_qubit_code_measure_syndrome(qc, q2[0], s2, a2, c2)
+    fqc_measure_syndrome(qc, q1[0], s1, a1, c1)
+    fqc_measure_syndrome(qc, q2[0], s2, a2, c2)
     
     #Correct Errors
-    five_qubit_code_correct_errors(qc, q1[0], s1, c1)
-    five_qubit_code_correct_errors(qc, q2[0], s2, c2)
+    fqc_correct_errors(qc, q1[0], s1, c1)
+    fqc_correct_errors(qc, q2[0], s2, c2)
     
     #Decode Qubits
-    decode_with_five_qubit_code(qc, q1[0], s1, o1[0])
-    decode_with_five_qubit_code(qc, q2[0], s2, o2[0])
+    decode_with_fqc(qc, q1[0], s1, o1[0])
+    decode_with_fqc(qc, q2[0], s2, o2[0])
     
     qc.barrier()
     
@@ -118,4 +118,31 @@ def create_fqc_bell_state() -> QuantumCircuit:
     qc.measure(o1[0], r[0])
     qc.measure(o2[0], r[1])
     
+    return qc
+
+def create_fqc_one_qubit() -> QuantumCircuit:
+    q1 = QuantumRegister(1, 'log_qubit')
+    s1 = QuantumRegister(4, 'stabilizers')
+    o1 = QuantumRegister(1, 'output')
+    a1 = QuantumRegister(4, 'ancilla')
+    c1 = ClassicalRegister(4, 'measured_errors')
+    r = ClassicalRegister(2, 'measured_output')
+    qc = QuantumCircuit(a1, s1, q1, o1, c1, r, name="Single Qubit Encoded with the Five Qubit Code")
+
+    qc.initialize(0, s1)
+    qc.initialize(0, o1)
+    qc.initialize(0, a1)
+
+    qc.barrier()
+
+    encode_with_fqc(qc, q1[0], s1)
+
+    fqc_measure_syndrome(qc, q1[0], s1, a1, c1)
+
+    fqc_correct_errors(qc, q1[0], s1, c1)
+
+    decode_with_fqc(qc, q1[0], s1, o1[0])
+    
+    qc.measure(q1[0], r[0])
+
     return qc

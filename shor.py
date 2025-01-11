@@ -140,11 +140,39 @@ def create_shor_bell_state() -> QuantumCircuit:
     shor_correct_errors(qc, q2[0], s2, c2)
     
     #Decode
-    decode_with_shors(qc, q1, c1, a1)
-    decode_with_shors(qc, q2, c2, a2)
+    decode_with_shors(qc, q1, c1, s1)
+    decode_with_shors(qc, q2, c2, s2)
     
     #Measure
     qc.measure(q1[0], r[0])
     qc.measure(q2[0], r[1])
+
+    return qc
+
+
+def create_shor_one_qubit() -> QuantumCircuit:
+    q1 = QuantumRegister(1, 'log_qubit')
+    s1 = QuantumRegister(8, 'stabilizers')
+    o1 = QuantumRegister(1, 'output')
+    a1 = QuantumRegister(8, 'ancilla')
+    c1 = ClassicalRegister(8, 'measured_errors')
+    r = ClassicalRegister(2, 'measured_output')
+    qc = QuantumCircuit(a1, s1, q1, o1, c1, r, name="Single Qubit Encoded with Shor's Code")
+
+    qc.initialize(0, s1)
+    qc.initialize(0, o1)
+    qc.initialize(0, a1)
+
+    qc.barrier()
+
+    encode_with_shors(qc, q1, s1)
+
+    shor_measure_syndrome(qc, q1[0], s1, a1, c1)
+
+    shor_correct_errors(qc, q1[0], s1, c1)
+
+    decode_with_shors(qc, q1, c1, s1)
+    
+    qc.measure(q1[0], r[0])
 
     return qc
