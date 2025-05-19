@@ -35,16 +35,6 @@ def shor_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
     qc.barrier()
 
 def shor_correct_errors(qc, log_q, stab_reg, class_reg):
-    """
-    Implements error correction based on stabilizer states using `if_else`.
-    
-    Parameters:
-        qc (QuantumCircuit): The quantum circuit.
-        log_reg (QuantumRegister): Logical qubit register (1 qubit).
-        stab_reg (QuantumRegister): Stabilizer register (6 qubits).
-        class_reg (ClassicalRegister): Classical register (6 bits).
-    """
-    # Define correction gates using a mapping of the table values.
     def apply_correction(qc, correction, qubit):
         if correction == "X":
             qc.x(qubit)
@@ -68,12 +58,10 @@ def shor_correct_errors(qc, log_q, stab_reg, class_reg):
         195: [('Y', stab_reg[0])]
     }
 
-
     for value, errors_list in corrections.items():
         with qc.if_test((class_reg, value)):
             for (gate, qubit) in errors_list:
                 apply_correction(qc, gate, qubit)
-
 
     qc.barrier()
 
@@ -98,54 +86,62 @@ def decode_with_shors(qc, log_reg, class_reg, stab_reg):
 
     qc.barrier()
 
-def create_shor_bell_state() -> QuantumCircuit:
-    q1 = QuantumRegister(1, 'log_qubit_1')
-    s1 = QuantumRegister(8, 'stabilizer_1')
-    o1 = QuantumRegister(1, 'output_1')
-    a1 = QuantumRegister(8, 'ancilla_1')
-    c1 = ClassicalRegister(8, 'measured_errors_1')
-    q2 = QuantumRegister(1, 'log_qubit_2')
-    s2 = QuantumRegister(8, 'stabilizer_2')
-    o2 = QuantumRegister(1, 'output_2')
-    a2 = QuantumRegister(8, 'ancilla_2')
-    c2 = ClassicalRegister(8, 'measured_errors_2')
-    r = ClassicalRegister(2, 'measured_output')
-    qc = QuantumCircuit(a1, s1, q1, a2, s2, q2, o1, o2, c1, c2, r, name="Bell State Encoded with Shor's Code")
-        
-    qc.initialize(0, s1)
-    qc.initialize(0, o1)
-    qc.initialize(0, a1)
-    qc.initialize(0, s2)
-    qc.initialize(0, o2)
-    qc.initialize(0, a2)
-    
-    qc.barrier()
-    
-    #Bell State
-    qc.h(q1[0])
-    qc.cx(q1[0],q2[0])
-    
-    qc.barrier()
-    
-    #Encode
-    encode_with_shors(qc, q1, s1)
-    encode_with_shors(qc, q2, s2)
+def create_shor_ghz_state(n: int) -> QuantumCircuit:
+    """
+    Generates an n-qubit GHZ state, encoding each qubit with the Shor code.
+    n must be between 2 and 10 (inclusive).
+    Returns a QuantumCircuit that performs this operation.
+    """
+    if not (2 <= n <= 10):
+        raise ValueError("n must be between 2 and 10")
 
-    #Measure Syndrome
-    shor_measure_syndrome(qc, q1[0], s1, a1, c1)
-    shor_measure_syndrome(qc, q2[0], s2, a2, c2)
-    
-    #Correct Errors
-    shor_correct_errors(qc, q1[0], s1, c1)
-    shor_correct_errors(qc, q2[0], s2, c2)
-    
-    #Decode
-    decode_with_shors(qc, q1, c1, s1)
-    decode_with_shors(qc, q2, c2, s2)
-    
-    #Measure
-    qc.measure(q1[0], r[0])
-    qc.measure(q2[0], r[1])
+    # Each logical qubit requires: 1 logical, 8 stabilizer, 1 output, 8 ancilla, 8 classical for syndrome, 1 classical for output
+    log_qubits = [QuantumRegister(1, f'log_qubit_{i}') for i in range(n)]
+    stab_regs = [QuantumRegister(8, f'stab_{i}') for i in range(n)]
+    out_regs = [QuantumRegister(1, f'output_{i}') for i in range(n)]
+    anc_regs = [QuantumRegister(8, f'ancilla_{i}') for i in range(n)]
+    class_regs = [ClassicalRegister(8, f'measured_errors_{i}') for i in range(n)]
+    out_classical = ClassicalRegister(n, 'measured_output')
+
+    # Construct the circuit with all registers (flattened)
+    qc = QuantumCircuit(
+        *[reg for anc in anc_regs for reg in anc],
+        *[reg for stab in stab_regs for reg in stab],
+        *[reg for lq in log_qubits for reg in lq],
+        *[reg for out in out_regs for reg in out],
+        *[reg for cl in class_regs for reg in cl],
+        out_classical,
+        name=f"{n}-qubit GHZ Encoded with Shor's Code"
+    )
+
+    # Initialize ancilla, output, stabilizers to |0>
+    for i in range(n):
+        qc.initialize(0, [q for q in anc_regs[i]])
+        qc.initialize(0, [q for q in stab_regs[i]])
+        qc.initialize(0, out_regs[i])
+
+    qc.barrier()
+
+    # Prepare logical GHZ state across log_qubits
+    # |0...0> + |1...1>
+    qc.h(log_qubits[0][0])
+    for i in range(1, n):
+        qc.cx(log_qubits[0][0], log_qubits[i][0])
+    qc.barrier()
+
+    # For each logical qubit, encode with the Shor code
+    for i in range(n):
+        encode_with_shors(qc, log_qubits[i], stab_regs[i])
+
+    # For each logical qubit, measure syndrome and correct
+    for i in range(n):
+        shor_measure_syndrome(qc, log_qubits[i][0], stab_regs[i], anc_regs[i], class_regs[i])
+        shor_correct_errors(qc, log_qubits[i][0], stab_regs[i], class_regs[i])
+
+    # For each logical qubit, decode and measure
+    for i in range(n):
+        decode_with_shors(qc, log_qubits[i], class_regs[i], stab_regs[i])
+        qc.measure(log_qubits[i][0], out_classical[i])
 
     return qc
 

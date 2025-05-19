@@ -1,15 +1,25 @@
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
-def create_bell_state() -> QuantumCircuit:
-    q = QuantumRegister(2, 'q')
-    c = ClassicalRegister(2, 'measured_output')
-    qc = QuantumCircuit(q,c, name="Bell State Unencoded")
+
+def create_ghz_state(n: int) -> QuantumCircuit:
+    """
+    Generates an n-qubit GHZ state (unencoded).
+    n must be between 2 and 10 (inclusive).
+    Returns a QuantumCircuit that performs this operation.
+    """
+    if not (2 <= n <= 10):
+        raise ValueError("n must be between 2 and 10")
+    q = QuantumRegister(n, 'q')
+    c = ClassicalRegister(n, 'measured_output')
+    qc = QuantumCircuit(q, c, name=f"{n}-qubit GHZ State Unencoded")
     
-    #Bell State
+    # GHZ State |0...0> + |1...1>
     qc.h(q[0])
-    qc.cx(q[0],q[1])
-    
-    #Measure
-    qc.measure(q[0], c[0])
-    qc.measure(q[1], c[1])
+    for i in range(1, n):
+        qc.cx(q[0], q[i])
+    qc.barrier()
+
+    # Measure all qubits
+    for i in range(n):
+        qc.measure(q[i], c[i])
     
     return qc

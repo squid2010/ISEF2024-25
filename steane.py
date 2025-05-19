@@ -30,18 +30,7 @@ def steane_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
 
     qc.barrier()
 
-
 def steane_correct_errors(qc, log_q, stab_reg, class_reg):
-    """
-    Implements error correction based on stabilizer states using `if_else`.
-    
-    Parameters:
-        qc (QuantumCircuit): The quantum circuit.
-        log_reg (QuantumRegister): Logical qubit register (1 qubit).
-        stab_reg (QuantumRegister): Stabilizer register (6 qubits).
-        class_reg (ClassicalRegister): Classical register (6 bits).
-    """
-    # Define correction gates using a mapping of the table values.
     def apply_correction(qc, correction, qubit):
         if correction == "X":
             qc.x(qubit)
@@ -64,10 +53,8 @@ def steane_correct_errors(qc, log_q, stab_reg, class_reg):
         with qc.if_test((class_reg, value)):
             apply_correction(qc, gate, qubit)
 
-
     qc.barrier()
 
-    
 def decode_with_steane(qc, log_q, stab_reg, out_q):
     qc.cx(stab_reg[0], out_q)
     qc.cx(stab_reg[1], out_q)
@@ -78,59 +65,63 @@ def decode_with_steane(qc, log_q, stab_reg, out_q):
 
     qc.barrier()
 
+def create_steane_ghz_state(n: int) -> QuantumCircuit:
+    """
+    Generates an n-qubit GHZ state, encoding each qubit with the Steane code.
+    n must be between 2 and 10 (inclusive).
+    Returns a QuantumCircuit that performs this operation.
+    """
+    if not (2 <= n <= 10):
+        raise ValueError("n must be between 2 and 10")
 
-def create_steane_bell_state() -> QuantumCircuit:
-    q1 = QuantumRegister(1, 'log_qubit_1')
-    s1 = QuantumRegister(6, 'stabilizer_1')
-    o1 = QuantumRegister(1, 'output_1')
-    a1 = QuantumRegister(6, 'ancilla_1')
-    c1 = ClassicalRegister(6, 'measured_errors_1')
-    q2 = QuantumRegister(1, 'log_qubit_2')
-    s2 = QuantumRegister(6, 'stabilizer_2')
-    o2 = QuantumRegister(1, 'output_2')
-    a2 = QuantumRegister(6, 'ancilla_2')
-    c2 = ClassicalRegister(6, 'measured_errors_2')
-    r = ClassicalRegister(2, 'measured_output')
-    qc = QuantumCircuit(a1, s1, q1, a2, s2, q2, o1, o2, c1, c2, r, name="Bell State Encoded with Steane's Code")
-    
-    #qc.reset(range(qc.num_qubits))
-    
-    qc.initialize(0, s1)
-    qc.initialize(0, o1)
-    qc.initialize(0, a1)
-    qc.initialize(0, s2)
-    qc.initialize(0, o2)
-    qc.initialize(0, a2)
-    
+    # Each logical qubit requires: 1 logical, 6 stabilizer, 1 output, 6 ancilla, 6 classical for syndrome, 1 classical for output
+    log_qubits = [QuantumRegister(1, f'log_qubit_{i}') for i in range(n)]
+    stab_regs = [QuantumRegister(6, f'stab_{i}') for i in range(n)]
+    out_regs = [QuantumRegister(1, f'output_{i}') for i in range(n)]
+    anc_regs = [QuantumRegister(6, f'ancilla_{i}') for i in range(n)]
+    class_regs = [ClassicalRegister(6, f'measured_errors_{i}') for i in range(n)]
+    out_classical = ClassicalRegister(n, 'measured_output')
+
+    # Construct the circuit with all registers (flattened)
+    qc = QuantumCircuit(
+        *[reg for anc in anc_regs for reg in anc],
+        *[reg for stab in stab_regs for reg in stab],
+        *[reg for lq in log_qubits for reg in lq],
+        *[reg for out in out_regs for reg in out],
+        *[reg for cl in class_regs for reg in cl],
+        out_classical,
+        name=f"{n}-qubit GHZ Encoded with Steane's Code"
+    )
+
+    # Initialize ancilla, output, stabilizers to |0>
+    for i in range(n):
+        qc.initialize(0, [q for q in anc_regs[i]])
+        qc.initialize(0, [q for q in stab_regs[i]])
+        qc.initialize(0, out_regs[i])
+
     qc.barrier()
-    
-    qc.h(q1[0])
-    qc.cx(q1[0], q2[0])
-    
+
+    # Prepare logical GHZ state across log_qubits
+    # |0...0> + |1...1>
+    qc.h(log_qubits[0][0])
+    for i in range(1, n):
+        qc.cx(log_qubits[0][0], log_qubits[i][0])
     qc.barrier()
-    
-    #Encode Qubits
-    encode_with_steane(qc, q1[0], s1)
-    encode_with_steane(qc, q2[0], s2)
-    
-    #Measure Syndrome
-    steane_measure_syndrome(qc, q1[0], s1, a1, c1)
-    steane_measure_syndrome(qc, q2[0], s2, a2, c2)
-    
-    #Correct Errors
-    steane_correct_errors(qc, q1[0], s1, c1)
-    steane_correct_errors(qc, q2[0], s2, c2)
-    
-    #Decode Qubits
-    decode_with_steane(qc, q1[0], s1, o1[0])
-    decode_with_steane(qc, q2[0], s2, o2[0])
-    
-    qc.barrier()
-    
-    #Measure Output
-    qc.measure(o1[0], r[0])
-    qc.measure(o2[0], r[1])
-    
+
+    # For each logical qubit, encode with the Steane code
+    for i in range(n):
+        encode_with_steane(qc, log_qubits[i][0], stab_regs[i])
+
+    # For each logical qubit, measure syndrome and correct
+    for i in range(n):
+        steane_measure_syndrome(qc, log_qubits[i][0], stab_regs[i], anc_regs[i], class_regs[i])
+        steane_correct_errors(qc, log_qubits[i][0], stab_regs[i], class_regs[i])
+
+    # For each logical qubit, decode and measure
+    for i in range(n):
+        decode_with_steane(qc, log_qubits[i][0], stab_regs[i], out_regs[i][0])
+        qc.measure(log_qubits[i][0], out_classical[i])
+
     return qc
 
 def create_steane_one_qubit() -> QuantumCircuit:

@@ -34,7 +34,6 @@ def fqc_measure_syndrome(qc, log_q, stab_reg, anc_reg, class_reg):
     qc.barrier()
 
 def fqc_correct_errors(qc, log_q, stab_reg, class_reg):
-    # Define correction gates using a mapping of the table values.
     def apply_correction(qc, correction, qubit):
         if correction == "X":
             qc.x(qubit)
@@ -42,7 +41,6 @@ def fqc_correct_errors(qc, log_q, stab_reg, class_reg):
             qc.z(qubit)
         elif correction == "Y":
             qc.y(qubit)
-
 
     corrections = {
         1:  ("X", stab_reg[0]), 10: ("Z", stab_reg[0]), 11: ("Y", stab_reg[0]),
@@ -52,11 +50,9 @@ def fqc_correct_errors(qc, log_q, stab_reg, class_reg):
         3:  ("X", log_q),        4: ("Z", log_q),        7: ("Y", log_q)
     }
 
-
     for value, (gate, qubit) in corrections.items():
         with qc.if_test((class_reg, value)):
             apply_correction(qc, gate, qubit)
-
 
     qc.barrier()
     
@@ -68,57 +64,69 @@ def decode_with_fqc(qc, log_q, stab_reg, out_q):
 
     qc.barrier()
 
+def create_fqc_ghz_state(n: int) -> QuantumCircuit:
+    """
+    Generates an n-qubit GHZ state, encoding each qubit with the five-qubit code.
+    n must be between 2 and 10 (inclusive).
+    Returns a QuantumCircuit that performs this operation.
+    """
+    if not (2 <= n <= 10):
+        raise ValueError("n must be between 2 and 10")
 
-def create_fqc_bell_state() -> QuantumCircuit:
-    q1 = QuantumRegister(1, 'log_qubit_1')
-    s1 = QuantumRegister(4, 'stabilizer_1')
-    o1 = QuantumRegister(1, 'output_1')
-    a1 = QuantumRegister(4, 'anicilla_1')
-    c1 = ClassicalRegister(4, 'measured_errors_1')
-    q2 = QuantumRegister(1, 'log_qubit_2')
-    s2 = QuantumRegister(4, 'stabilizer_2')
-    o2 = QuantumRegister(1, 'output_2')
-    a2 = QuantumRegister(4, 'anicilla_2')
-    c2 = ClassicalRegister(4, 'measured_errors_2')
-    r = ClassicalRegister(2, 'measured_output')
-    qc = QuantumCircuit(a1, s1, q1, o1, a2, s2, q2, o2, c1, c2, r, name="Bell State Encoded with the Five Qubit Code")
-    
-    qc.initialize(0, s1)
-    qc.initialize(0, o1)
-    qc.initialize(0, s2)
-    qc.initialize(0, o2)
-    
-    qc.barrier()
-    
-    #Set up Bell State
-    qc.h(q1[0])
-    qc.cx(q1[0], q2[0])
-    
-    qc.barrier()
-    
-    #Encode Qubits
-    encode_with_fqc(qc, q1[0], s1)
-    encode_with_fqc(qc, q2[0], s2)
-    
-    #Measure Syndrome
-    fqc_measure_syndrome(qc, q1[0], s1, a1, c1)
-    fqc_measure_syndrome(qc, q2[0], s2, a2, c2)
-    
-    #Correct Errors
-    fqc_correct_errors(qc, q1[0], s1, c1)
-    fqc_correct_errors(qc, q2[0], s2, c2)
-    
-    #Decode Qubits
-    decode_with_fqc(qc, q1[0], s1, o1[0])
-    decode_with_fqc(qc, q2[0], s2, o2[0])
+    # Each logical qubit requires 1 logical, 4 stabilizer, 1 output, 4 ancilla, 4 classical for syndrome, 1 classical for output
+    log_qubits = QuantumRegister(n, 'log_qubit')
+    stab_regs = [QuantumRegister(4, f'stab_{i}') for i in range(n)]
+    out_regs = [QuantumRegister(1, f'out_{i}') for i in range(n)]
+    anc_regs = [QuantumRegister(4, f'anc_{i}') for i in range(n)]
+    class_regs = [ClassicalRegister(4, f'measure_err_{i}') for i in range(n)]
+    out_classical = ClassicalRegister(n, 'measured_output')
+
+    # Flatten all registers for circuit construction
+    qregs = []
+    for i in range(n):
+        qregs.extend([anc_regs[i], stab_regs[i], QuantumRegister(1, f'log_single_{i}'), out_regs[i]])
+    # But we want to use the main log_qubits register for our logical GHZ
+    qc = QuantumCircuit(
+        *[reg for anc in anc_regs for reg in anc],
+        *[reg for stab in stab_regs for reg in stab],
+        *log_qubits,
+        *[reg for out in out_regs for reg in out],
+        *[reg for cl in class_regs for reg in cl],
+        out_classical,
+        name=f"{n}-qubit GHZ Encoded with Five Qubit Code"
+    )
+
+    # Initialize ancilla, output, stabilizers to |0>
+    for i in range(n):
+        qc.initialize(0, [q for q in anc_regs[i]])
+        qc.initialize(0, [q for q in stab_regs[i]])
+        qc.initialize(0, out_regs[i])
     
     qc.barrier()
+
+    # Prepare logical GHZ state across log_qubits
+    # |0...0> + |1...1>
+    qc.h(log_qubits[0])
+    for i in range(1, n):
+        qc.cx(log_qubits[0], log_qubits[i])
+    qc.barrier()
     
-    #Measure
-    qc.measure(o1[0], r[0])
-    qc.measure(o2[0], r[1])
+    # For each logical qubit, encode with the five-qubit code
+    for i in range(n):
+        encode_with_fqc(qc, log_qubits[i], stab_regs[i])
+
+    # For each logical qubit, measure syndrome and correct
+    for i in range(n):
+        fqc_measure_syndrome(qc, log_qubits[i], stab_regs[i], anc_regs[i], class_regs[i])
+        fqc_correct_errors(qc, log_qubits[i], stab_regs[i], class_regs[i])
+    
+    # For each logical qubit, decode into output qubit and measure
+    for i in range(n):
+        decode_with_fqc(qc, log_qubits[i], stab_regs[i], out_regs[i][0])
+        qc.measure(log_qubits[i], out_classical[i])
     
     return qc
+
 
 def create_fqc_one_qubit() -> QuantumCircuit:
     q1 = QuantumRegister(1, 'log_qubit')
@@ -145,4 +153,4 @@ def create_fqc_one_qubit() -> QuantumCircuit:
     
     qc.measure(q1[0], r[0])
 
-    return qc
+    return qcs
